@@ -1,0 +1,7 @@
+interface:
+  display_name: "VersionNav"
+  short_description: "OpenClaw upgrade advice from local signals"
+  brand_color: "#1F6A45"
+  default_prompt: "Use $version-nav-skill to check whether I should upgrade OpenClaw."
+policy:
+  allow_implicit_invocation: true

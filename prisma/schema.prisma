@@ -1,0 +1,79 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ReleaseCategory {
+  feature
+  fix
+  breaking
+  migration
+  security
+  provider
+  plugin
+  channel
+  cron
+  memory
+  browser
+  codex
+  doctor
+}
+
+enum RecommendationAction {
+  stay
+  upgrade
+  wait
+  avoid
+}
+
+model Release {
+  id             String        @id @default(cuid())
+  productId      String
+  version        String
+  date           DateTime
+  channel        String
+  sourceUrl      String
+  rawMarkdown    String
+  stabilityLabel String
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  items          ReleaseItem[]
+
+  @@unique([productId, version])
+}
+
+model ReleaseItem {
+  id            String            @id @default(cuid())
+  releaseId     String
+  productId     String
+  release       Release           @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+  category      ReleaseCategory
+  affectedAreas String[]
+  summary       String
+  riskLevel     Int
+  sourceRefs    Json
+  published     Boolean           @default(false)
+  createdAt     DateTime          @default(now())
+}
+
+model UserProfile {
+  id               String   @id @default(cuid())
+  currentVersion   String
+  installMethod    String?
+  updateChannel    String?
+  enabledProviders String[]
+  enabledPlugins   String[]
+  enabledChannels  String[]
+  enabledSkills    String[]
+  cronUsed         Boolean  @default(false)
+  os               String?
+  riskTolerance    String   @default("medium")
+  profileHash      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
