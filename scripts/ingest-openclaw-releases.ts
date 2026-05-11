@@ -281,6 +281,13 @@ async function upsertRelease(supabase: AdminClient, release: Release) {
         affected_areas: item.affectedAreas,
         summary: item.summary,
         risk_level: item.riskLevel,
+        impact_level: item.impactLevel,
+        impact_surfaces: item.impactSurfaces,
+        requires_validation: item.requiresValidation,
+        validation_hints: item.validationHints,
+        rollback_hints: item.rollbackHints,
+        source_confidence: item.sourceConfidence,
+        known_issue_count: item.knownIssueCount,
         published: true
       })
       .select("id")

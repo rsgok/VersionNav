@@ -1,6 +1,17 @@
 import { products as fixtureProducts, sampleReleases } from "@/lib/release-data";
+import { withReleaseItemDefaults } from "@/lib/release-facts";
 import { compareVersions } from "@/lib/releases";
-import type { Product, ProductId, Release, ReleaseCategory, ReleaseItem, SourceRef } from "@/lib/types";
+import type {
+  ImpactLevel,
+  ImpactSurface,
+  Product,
+  ProductId,
+  Release,
+  ReleaseCategory,
+  ReleaseItem,
+  SourceConfidence,
+  SourceRef
+} from "@/lib/types";
 import { createPublicSupabaseClient } from "./client";
 
 const PAGE_SIZE = 1000;
@@ -38,6 +49,13 @@ type ReleaseItemRow = {
   affected_areas: string[];
   summary: string;
   risk_level: 1 | 2 | 3 | 4 | 5;
+  impact_level?: ImpactLevel;
+  impact_surfaces?: ImpactSurface[];
+  requires_validation?: boolean;
+  validation_hints?: string[];
+  rollback_hints?: string[];
+  source_confidence?: SourceConfidence;
+  known_issue_count?: number;
 };
 
 type ReleaseItemSourceRow = {
@@ -293,7 +311,7 @@ function mapReleases(
 }
 
 function mapReleaseItem(item: ReleaseItemRow, sources: ReleaseItemSourceRow[]): ReleaseItem {
-  return {
+  return withReleaseItemDefaults({
     id: item.id,
     releaseId: item.release_id,
     productId: item.product_id,
@@ -301,10 +319,17 @@ function mapReleaseItem(item: ReleaseItemRow, sources: ReleaseItemSourceRow[]): 
     affectedAreas: item.affected_areas ?? [],
     summary: item.summary,
     riskLevel: item.risk_level,
+    impactLevel: item.impact_level,
+    impactSurfaces: item.impact_surfaces,
+    requiresValidation: item.requires_validation,
+    validationHints: item.validation_hints,
+    rollbackHints: item.rollback_hints,
+    sourceConfidence: item.source_confidence,
+    knownIssueCount: item.known_issue_count,
     sourceRefs: sources
       .filter((source) => source.item_id === item.id)
       .map<SourceRef>((source) => ({ label: source.label, url: source.url }))
-  };
+  });
 }
 
 async function fetchReleaseItems(
@@ -314,13 +339,26 @@ async function fetchReleaseItems(
   const rows: ReleaseItemRow[] = [];
 
   for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await supabase
+    const query = supabase
       .from("release_items")
-      .select("id,release_id,product_id,category,affected_areas,summary,risk_level")
+      .select("id,release_id,product_id,category,affected_areas,summary,risk_level,impact_level,impact_surfaces,requires_validation,validation_hints,rollback_hints,source_confidence,known_issue_count")
       .in("release_id", releaseIds)
       .eq("published", true)
       .order("created_at", { ascending: true })
       .range(from, from + PAGE_SIZE - 1);
+    let { data, error } = await query;
+
+    if (error && /impact_|requires_validation|validation_hints|rollback_hints|source_confidence|known_issue_count/i.test(error.message)) {
+      const fallback = await supabase
+        .from("release_items")
+        .select("id,release_id,product_id,category,affected_areas,summary,risk_level")
+        .in("release_id", releaseIds)
+        .eq("published", true)
+        .order("created_at", { ascending: true })
+        .range(from, from + PAGE_SIZE - 1);
+      data = fallback.data as typeof data;
+      error = fallback.error;
+    }
 
     if (error) {
       return null;

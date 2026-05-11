@@ -1,8 +1,12 @@
 import { OPENCLAW_SOURCE_DOCS } from "./release-data";
+import { strongConclusionAllowed } from "./release-facts";
 import { DEFAULT_PRODUCT_ID, getProduct, normalizeProductId } from "./products";
 import { compareVersions, findRelease, latestStableRelease, listReleases } from "./releases";
 import type {
+  DecisionFact,
+  ImpactSurface,
   NaturalLanguageAnswer,
+  PersonalizedRisk,
   ProductId,
   Recommendation,
   Release,
@@ -47,7 +51,7 @@ export function buildRecommendation(input: {
   }
 
   if (compareVersions(currentVersion, target.version) === 0) {
-    return {
+    return completeRecommendation({
       productId,
       action: "stay",
       recommendedVersion: target.version,
@@ -56,8 +60,11 @@ export function buildRecommendation(input: {
       risks: collectRisks([target], input.profile, input.userIntent),
       validationSteps: DEFAULT_VALIDATION_STEPS,
       rollbackSteps: DEFAULT_ROLLBACK_STEPS,
-      sources: uniqueSources([releaseSource(target), ...product.sourceDocs])
-    };
+      sources: uniqueSources([releaseSource(target), ...product.sourceDocs]),
+      releases: [target],
+      profile: input.profile,
+      userIntent: input.userIntent
+    });
   }
 
   const range = releases.filter(
@@ -68,44 +75,46 @@ export function buildRecommendation(input: {
   );
   const matches = matchingItems(range, input.profile, input.userIntent);
   const highRisk = range.flatMap((release) => release.items).filter((item) => item.riskLevel >= 4);
+  const strongHighRisk = highRisk.filter(strongConclusionAllowed);
   const hasSecurityFix = range.some((release) =>
     release.items.some((item) => item.category === "security")
   );
   const matchedSecurityFix = matches.some((item) => item.category === "security");
-  const lowRiskUser = input.profile.riskTolerance === "low";
+  const lowRiskUser = input.profile.riskTolerance === "low" || hasDoctorIssues(input.profile);
   const nowMs = input.now?.getTime() ?? Date.now();
   const targetAgeHours = (nowMs - Date.parse(target.date)) / 36e5;
   const isFresh = targetAgeHours < 48 || target.stabilityLabel === "fresh";
 
-  if (highRisk.length > 0 && lowRiskUser && !matchedSecurityFix) {
+  if (strongHighRisk.length > 0 && lowRiskUser && !matchedSecurityFix) {
     return response(productId, product.sourceDocs, "wait", target.version, 0.78, [
       "The target includes high-risk upgrade surface and the profile is marked low risk.",
+      hasDoctorIssues(input.profile) ? "Local doctor output already has warnings or failures, so validate before upgrading." : "",
       ...summariesFor(matches)
-    ], highRisk, range);
+    ], highRisk, range, input.profile, input.userIntent);
   }
 
-  if (highRisk.length > 0 && matches.length === 0 && !hasSecurityFix) {
+  if (strongHighRisk.length > 0 && matches.length === 0 && !hasSecurityFix) {
     return response(productId, product.sourceDocs, "avoid", target.version, 0.72, [
       "The target has high-risk changes but no clear match to the supplied usage profile or intent."
-    ], highRisk, range);
+    ], highRisk, range, input.profile, input.userIntent);
   }
 
   if (isFresh && lowRiskUser && !matchedSecurityFix) {
     return response(productId, product.sourceDocs, "wait", target.version, 0.74, [
       "The target release is still fresh; wait for 24-48 hours of public soak unless the fix is urgent."
-    ], highRisk, range);
+    ], highRisk, range, input.profile, input.userIntent);
   }
 
   if (matches.length > 0 || hasSecurityFix) {
     return response(productId, product.sourceDocs, "upgrade", target.version, 0.84, [
       ...summariesFor(matches),
       hasSecurityFix ? "The range includes a security or redaction hardening item." : ""
-    ], highRisk, range);
+    ], highRisk, range, input.profile, input.userIntent);
   }
 
   return response(productId, product.sourceDocs, "wait", target.version, 0.66, [
     "No release item strongly matches the profile; wait unless you need a listed fix."
-  ], highRisk, range);
+  ], highRisk, range, input.profile, input.userIntent);
 }
 
 export function answerNaturalLanguageQuestion(input: {
@@ -201,7 +210,7 @@ function fallbackRecommendation(
   productId: ProductId = DEFAULT_PRODUCT_ID,
   sources: SourceRef[] = OPENCLAW_SOURCE_DOCS
 ): Recommendation {
-  return {
+  return completeRecommendation({
     productId,
     action: "wait",
     recommendedVersion: "unknown",
@@ -210,8 +219,10 @@ function fallbackRecommendation(
     risks: ["Sync official releases before making an upgrade decision."],
     validationSteps: DEFAULT_VALIDATION_STEPS,
     rollbackSteps: DEFAULT_ROLLBACK_STEPS,
-    sources
-  };
+    sources,
+    releases: [],
+    profile: {}
+  });
 }
 
 function response(
@@ -222,9 +233,11 @@ function response(
   confidence: number,
   reasons: string[],
   riskItems: ReleaseItem[],
-  releases: Release[]
+  releases: Release[],
+  profile: UserProfile,
+  userIntent = ""
 ): Recommendation {
-  return {
+  return completeRecommendation({
     productId,
     action,
     recommendedVersion: version,
@@ -242,18 +255,182 @@ function response(
         ...release.items.flatMap((item) => item.sourceRefs)
       ]),
       ...productSources
-    ])
+    ]),
+    releases,
+    profile,
+    userIntent
+  });
+}
+
+function completeRecommendation(base: Omit<
+  Recommendation,
+  "matchedFacts" | "personalizedRisks" | "validationPlan" | "rollbackPlan" | "sourceLinks" | "feedbackPrompt"
+> & {
+  releases: Release[];
+  profile: UserProfile;
+  userIntent?: string;
+}): Recommendation {
+  const matchedItems = matchingItems(base.releases, base.profile, base.userIntent);
+  const relevantItems = matchedItems.length > 0
+    ? matchedItems
+    : base.releases.flatMap((release) => release.items).filter((item) => item.requiresValidation || item.riskLevel >= 3);
+  const sourceLinks = uniqueSources(base.sources);
+  const matchedSurfaces = uniqueSurfaces([
+    ...profileSurfaces(base.profile),
+    ...relevantItems.flatMap((item) => item.impactSurfaces)
+  ]);
+  const validationPlan = buildValidationPlan(base.profile, relevantItems, matchedSurfaces);
+  const rollbackPlan = buildRollbackPlan(base.rollbackSteps, relevantItems);
+
+  return {
+    productId: base.productId,
+    action: base.action,
+    recommendedVersion: base.recommendedVersion,
+    confidence: base.confidence,
+    reasons: base.reasons,
+    risks: base.risks,
+    validationSteps: validationPlan.afterUpgrade,
+    rollbackSteps: rollbackPlan.steps,
+    sources: sourceLinks,
+    matchedFacts: relevantItems.slice(0, 8).map((item) => decisionFactFor(item, base.releases)),
+    personalizedRisks: personalizedRisksFor(base.profile, relevantItems),
+    validationPlan,
+    rollbackPlan,
+    sourceLinks,
+    feedbackPrompt: {
+      profileFingerprint: base.profile.compatibilityFingerprint,
+      relatedReleaseItemIds: relevantItems.map((item) => item.id),
+      suggestedReasons: [
+        "confusing_recommendation",
+        "missing_source",
+        "wrong_recommendation",
+        "upgrade_failed",
+        "rollback_failed",
+        "request_agent"
+      ]
+    }
   };
 }
 
 function matchingItems(releases: Release[], profile: UserProfile, userIntent = ""): ReleaseItem[] {
   const profileTerms = profileTermsFor(profile, userIntent);
+  const surfaces = profileSurfaces(profile);
 
   return releases
     .flatMap((release) => release.items)
     .filter((item) =>
-      item.affectedAreas.some((area) => profileTerms.includes(area.toLowerCase()))
+      item.affectedAreas.some((area) => profileTerms.includes(area.toLowerCase())) ||
+      item.impactSurfaces.some((surface) => surfaces.includes(surface))
     );
+}
+
+function decisionFactFor(item: ReleaseItem, releases: Release[]): DecisionFact {
+  return {
+    id: item.id,
+    releaseId: item.releaseId,
+    version: releases.find((release) => release.id === item.releaseId)?.version,
+    summary: item.summary,
+    category: item.category,
+    impactLevel: item.impactLevel,
+    impactSurfaces: item.impactSurfaces,
+    sourceConfidence: item.sourceConfidence,
+    sourceRefs: item.sourceRefs
+  };
+}
+
+function personalizedRisksFor(profile: UserProfile, items: ReleaseItem[]): PersonalizedRisk[] {
+  const surfaces = profileSurfaces(profile);
+  const risks = items
+    .flatMap((item) =>
+      item.impactSurfaces
+        .filter((surface) => surfaces.includes(surface) || item.riskLevel >= 4)
+        .map((surface) => ({
+          level: item.impactLevel,
+          surface,
+          summary: item.summary,
+          reason: surfaces.includes(surface)
+            ? `This release touches ${surface}, which appears in your local profile.`
+            : `This release has ${item.impactLevel} impact and should be validated even without a direct profile match.`,
+          sourceRefs: item.sourceRefs
+        }))
+    );
+
+  return risks.slice(0, 8);
+}
+
+function buildValidationPlan(
+  profile: UserProfile,
+  items: ReleaseItem[],
+  matchedSurfaces: ImpactSurface[]
+): Recommendation["validationPlan"] {
+  const beforeUpgrade = uniqueStrings([
+    "openclaw update status --json",
+    "openclaw doctor --non-interactive",
+    "openclaw --version"
+  ]);
+  const afterUpgrade = uniqueStrings([
+    "openclaw --version",
+    "openclaw update status --json",
+    "openclaw doctor --non-interactive",
+    ...items.flatMap((item) => item.validationHints),
+    ...surfaceValidationSteps(profile, matchedSurfaces)
+  ]).slice(0, 10);
+
+  return {
+    beforeUpgrade,
+    afterUpgrade,
+    requiredChecks: afterUpgrade,
+    matchedSurfaces
+  };
+}
+
+function buildRollbackPlan(defaultSteps: string[], items: ReleaseItem[]): Recommendation["rollbackPlan"] {
+  return {
+    steps: uniqueStrings(defaultSteps),
+    hints: uniqueStrings(items.flatMap((item) => item.rollbackHints)).slice(0, 8)
+  };
+}
+
+function surfaceValidationSteps(profile: UserProfile, surfaces: ImpactSurface[]): string[] {
+  const steps: string[] = [];
+
+  if (surfaces.includes("provider") || profile.enabledProviders?.length) {
+    steps.push("Run one provider-backed agent request and confirm auth still works.");
+  }
+  if (surfaces.includes("plugin") || profile.enabledPlugins?.length) {
+    steps.push("Confirm configured plugins still load.");
+  }
+  if (surfaces.includes("skill") || profile.enabledSkills?.length) {
+    steps.push("Confirm configured skills still load.");
+  }
+  if (surfaces.includes("cron") || profile.cronUsed) {
+    steps.push("Confirm scheduled jobs still appear in cron status.");
+  }
+  if (surfaces.includes("browser")) {
+    steps.push("Run one local browser-backed agent action.");
+  }
+
+  return steps;
+}
+
+function profileSurfaces(profile: UserProfile): ImpactSurface[] {
+  const surfaces: ImpactSurface[] = [];
+
+  if (profile.enabledProviders?.length) surfaces.push("provider", "auth");
+  if (profile.enabledPlugins?.length) surfaces.push("plugin");
+  if (profile.enabledSkills?.length) surfaces.push("skill");
+  if (profile.enabledChannels?.length) surfaces.push("channel");
+  if (profile.cronUsed || profile.configShape?.containsCron) surfaces.push("cron");
+  if (profile.doctorSummary?.length) surfaces.push("doctor");
+  if (profile.installMethod || profile.updateStatusSummary) surfaces.push("update");
+
+  return uniqueSurfaces(surfaces);
+}
+
+function hasDoctorIssues(profile: UserProfile): boolean {
+  return (profile.doctorSummary ?? []).some((check) =>
+    check.status === "warn" || check.status === "fail" || check.status === "error"
+  );
 }
 
 function shouldIncludeChannel(
@@ -277,8 +454,13 @@ function profileTermsFor(profile: UserProfile, userIntent = ""): string {
     ...(profile.enabledChannels ?? []),
     ...(profile.enabledSkills ?? []),
     profile.cronUsed ? "cron" : "",
+    profile.doctorSummary?.some((check) => check.status === "warn" || check.status === "fail" || check.status === "error")
+      ? "doctor"
+      : "",
     profile.updateChannel ?? "",
     profile.installMethod ?? "",
+    profile.updateStatusSummary?.channel ?? "",
+    profile.configShape?.containsCron ? "cron" : "",
     userIntent
   ]
     .join(" ")
@@ -364,6 +546,14 @@ function uniqueSources(sources: SourceRef[]): SourceRef[] {
     seen.add(source.url);
     return true;
   });
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values.filter(Boolean))];
+}
+
+function uniqueSurfaces(values: ImpactSurface[]): ImpactSurface[] {
+  return [...new Set(values)].sort();
 }
 
 function releaseSource(release: Release): SourceRef {

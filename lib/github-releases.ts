@@ -1,3 +1,4 @@
+import { withReleaseItemDefaults } from "./release-facts";
 import type { ProductId, Release, ReleaseCategory, ReleaseItem } from "./types";
 
 type GitHubRelease = {
@@ -192,7 +193,7 @@ export function parseReleaseItems(
       }))
       .filter((source) => isEvidenceSourceUrl(source.url));
 
-    return {
+    return withReleaseItemDefaults({
       id: `${releaseId}-${index}`,
       releaseId,
       productId,
@@ -201,7 +202,7 @@ export function parseReleaseItems(
       summary,
       riskLevel: category === "breaking" || category === "migration" ? 4 : category === "security" ? 1 : 2,
       sourceRefs: dedupeSourceRefs([{ label: `Release ${releaseId}`, url: sourceUrl }, ...linkedSources])
-    };
+    });
   });
 }
 

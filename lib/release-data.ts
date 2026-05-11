@@ -1,4 +1,9 @@
+import { withReleaseItemDefaults } from "./release-facts";
 import type { Product, Release } from "./types";
+
+type RawRelease = Omit<Release, "items"> & {
+  items: Parameters<typeof withReleaseItemDefaults>[0][];
+};
 
 export const products: Product[] = [
   {
@@ -42,7 +47,7 @@ export const OPENCLAW_SOURCE_DOCS = products.find((product) => product.id === "o
   }
 ];
 
-export const sampleReleases: Release[] = [
+const rawSampleReleases: RawRelease[] = [
   {
     id: "2026-04-23",
     productId: "openclaw",
@@ -174,3 +179,8 @@ export const sampleReleases: Release[] = [
     ]
   }
 ];
+
+export const sampleReleases: Release[] = rawSampleReleases.map((release) => ({
+  ...release,
+  items: release.items.map(withReleaseItemDefaults)
+}));

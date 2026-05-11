@@ -10,7 +10,10 @@ export default function RecommendationResult({
   result: Recommendation;
 }) {
   const topReasons = result.reasons.slice(0, 3);
-  const topRisks = result.risks.slice(0, 3);
+  const topRisks = (result.personalizedRisks.length > 0
+    ? result.personalizedRisks.map((risk) => `${risk.surface}: ${risk.summary}`)
+    : result.risks
+  ).slice(0, 3);
   const confidencePercent = Math.round(result.confidence * 100);
 
   return (
@@ -49,11 +52,11 @@ export default function RecommendationResult({
         <section className="decision-panel">
           <h3>
             <AlertTriangle size={17} />
-            {messages.decisionRiskCheck}
+            {messages.decisionPersonalizedRisk}
           </h3>
           <ol>
-            {topRisks.map((risk) => (
-              <li key={risk}>{risk}</li>
+            {topRisks.map((risk, index) => (
+              <li key={`${risk}-${index}`}>{risk}</li>
             ))}
           </ol>
         </section>
@@ -62,19 +65,52 @@ export default function RecommendationResult({
       <section className="decision-panel">
         <h3>
           <ShieldCheck size={17} />
-          {messages.decisionNextSteps}
+          {messages.decisionBeforeUpgrade}
         </h3>
         <div className="command-list command-list--compact">
-          {result.validationSteps.slice(0, 4).map((step) => (
+          {result.validationPlan.beforeUpgrade.slice(0, 4).map((step) => (
             <code key={step}>{step}</code>
           ))}
         </div>
       </section>
 
+      <section className="decision-panel">
+        <h3>
+          <ShieldCheck size={17} />
+          {messages.decisionAfterUpgrade}
+        </h3>
+        <div className="command-list command-list--compact">
+          {result.validationPlan.afterUpgrade.slice(0, 6).map((step) => (
+            <code key={step}>{step}</code>
+          ))}
+        </div>
+      </section>
+
+      <div className="decision-sections">
+        <section className="decision-panel">
+          <h3>{messages.decisionMatchedFacts}</h3>
+          <ol>
+            {result.matchedFacts.slice(0, 4).map((fact) => (
+              <li key={fact.id}>
+                {fact.impactLevel}: {fact.summary}
+              </li>
+            ))}
+          </ol>
+        </section>
+        <section className="decision-panel">
+          <h3>{messages.decisionRollback}</h3>
+          <ol>
+            {[...result.rollbackPlan.steps, ...result.rollbackPlan.hints].slice(0, 4).map((step, index) => (
+              <li key={`${step}-${index}`}>{step}</li>
+            ))}
+          </ol>
+        </section>
+      </div>
+
       <section className="decision-sources">
         <h3>{messages.decisionSourceHint}</h3>
         <div className="source-list">
-          {result.sources.slice(0, 6).map((source) => (
+          {result.sourceLinks.slice(0, 6).map((source) => (
             <a href={source.url} key={source.url} target="_blank" rel="noreferrer">
               {source.label} <ExternalLink size={13} />
             </a>

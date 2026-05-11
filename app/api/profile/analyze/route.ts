@@ -22,6 +22,15 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     profileHash,
+    compatibilityFingerprint: parsed.data.profile.compatibilityFingerprint ?? profileHash,
+    matchedSurfaces: [
+      ...(parsed.data.profile.enabledProviders?.length ? ["provider", "auth"] : []),
+      ...(parsed.data.profile.enabledPlugins?.length ? ["plugin"] : []),
+      ...(parsed.data.profile.enabledSkills?.length ? ["skill"] : []),
+      ...(parsed.data.profile.enabledChannels?.length ? ["channel"] : []),
+      ...(parsed.data.profile.cronUsed ? ["cron"] : []),
+      ...(parsed.data.profile.doctorSummary?.length ? ["doctor"] : [])
+    ],
     status: "analyzed",
     recommendation: buildRecommendation({
       productId: parsed.data.productId,

@@ -8,7 +8,7 @@ export const dictionary = {
   en: {
     productLabel: "Agent product",
     tagline: "Agent Upgrade Advisor",
-    mainTitle: "Decide whether to upgrade",
+    mainTitle: "Decide whether {agent} should upgrade",
     mainSubtitle:
       "Choose versions, describe your usage in plain language, and get upgrade risk, validation steps, and rollback plans tied to source links.",
     compareCardTitle: "Compare a version range",
@@ -55,7 +55,12 @@ export const dictionary = {
     decisionTarget: "Target",
     decisionBasis: "Why this decision",
     decisionRiskCheck: "What to check",
-    decisionNextSteps: "Generic validation checklist",
+    decisionPersonalizedRisk: "Why it matters to your setup",
+    decisionBeforeUpgrade: "Before upgrading",
+    decisionAfterUpgrade: "After upgrading",
+    decisionRollback: "Rollback plan",
+    decisionMatchedFacts: "Matched release facts",
+    decisionNextSteps: "Validation checklist",
     decisionSourceHint: "Source links used for this decision",
     showFullCompare: "Open full comparison",
     actionUpgrade: "Upgrade",
@@ -107,12 +112,16 @@ export const dictionary = {
     communityTitle: "Help keep VersionNav maintained",
     communityBody: "Report confusing recommendations, missing sources, or agent products you want next. Sponsorship supports release ingestion, source review, and new agent coverage.",
     feedback: "Send feedback",
+    feedbackReason: "Feedback type",
+    feedbackMessage: "Optional detail",
+    feedbackSend: "Submit feedback",
+    feedbackThanks: "Feedback saved",
     sponsor: "GitHub Sponsors"
   },
   zh: {
     productLabel: "Agent 产品",
     tagline: "Agent 升级顾问",
-    mainTitle: "判断该不该升级",
+    mainTitle: "判断 {agent} 该不该升级",
     mainSubtitle:
       "选择版本，用自然语言描述你的使用场景，获取带来源链接的升级风险、验证步骤和回滚方案。",
     compareCardTitle: "对比版本范围",
@@ -159,7 +168,12 @@ export const dictionary = {
     decisionTarget: "目标版本",
     decisionBasis: "为什么这么建议",
     decisionRiskCheck: "需要检查什么",
-    decisionNextSteps: "通用验证清单",
+    decisionPersonalizedRisk: "为什么和你的环境有关",
+    decisionBeforeUpgrade: "升级前检查",
+    decisionAfterUpgrade: "升级后验证",
+    decisionRollback: "回滚方案",
+    decisionMatchedFacts: "命中的版本事实",
+    decisionNextSteps: "验证清单",
     decisionSourceHint: "本次决策使用的来源链接",
     showFullCompare: "查看完整对比",
     actionUpgrade: "建议升级",
@@ -211,6 +225,10 @@ export const dictionary = {
     communityTitle: "支持 VersionNav 持续维护",
     communityBody: "如果建议看不懂、来源缺失，或你希望支持其他 Agent 产品，可以直接反馈。赞助会用于维护 release 抓取、来源核查和更多 Agent 覆盖。",
     feedback: "提交反馈",
+    feedbackReason: "反馈类型",
+    feedbackMessage: "补充说明（可选）",
+    feedbackSend: "提交反馈",
+    feedbackThanks: "已收到反馈",
     sponsor: "GitHub Sponsors"
   }
 } satisfies Record<Locale, Record<string, string>>;

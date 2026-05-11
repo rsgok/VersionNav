@@ -50,6 +50,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   const firstVersion = releases[0]?.version ?? "";
   const latestVersion = latest?.version ?? "";
   const compareHref = `/compare?product=${productId}&lang=${locale}&from=${firstVersion}&to=${latestVersion}`;
+  const mainTitle = messages.mainTitle.replace("{agent}", product.name);
 
   return (
     <main className="app-main">
@@ -86,7 +87,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
       <section className="tool-hero">
         <div className="tool-hero__copy">
           <p className="eyebrow">{product.name}</p>
-          <h1>{messages.mainTitle}</h1>
+          <h1>{mainTitle}</h1>
           <p>{messages.mainSubtitle}</p>
         </div>
         <div className="hero-meta" aria-label="Product release status">

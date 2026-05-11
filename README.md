@@ -28,6 +28,7 @@ npm run dev
 - `GET /api/releases?productId=openclaw`
 - `GET /compare?product=openclaw&from=2026.4.23&to=2026.5.7`
 - `POST /api/profile/analyze`
+- `POST /api/feedback`
 
 ## Products
 
@@ -42,6 +43,18 @@ npx skills add https://github.com/rsgok/VersionNav --skill version-nav-skill
 ```
 
 The Skill collects read-only OpenClaw signals, redacts sensitive values, and asks VersionNav for a sourced upgrade decision.
+
+For upgrade validation, the Skill can collect before/after profile envelopes and compare them without executing upgrade or rollback commands:
+
+```bash
+npx tsx scripts/collect-profile.ts --mode before > before.json
+npx tsx scripts/recommend.ts --api-url https://versionnav.example.com --product openclaw --profile before.json --intent "I mainly use browser and cron"
+npx tsx scripts/verify-openclaw.ts --profile before.json --target 2026.x.x
+npx tsx scripts/collect-profile.ts --mode after > after.json
+npx tsx scripts/compare-validation.ts --before before.json --after after.json
+```
+
+`recommend.ts` returns a concise summary plus a `reportUrl` for the matching VersionNav `/decision` page. The URL uses public query params only and does not include the full local profile.
 
 ## Release Data Pipeline
 

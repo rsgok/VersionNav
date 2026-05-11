@@ -1,4 +1,5 @@
 import type { Release, ReleaseItem } from "./types";
+import { strongConclusionAllowed } from "./release-facts";
 
 const HIGH_RISK_CATEGORIES = new Set(["breaking", "security", "migration", "plugin", "doctor"]);
 
@@ -35,6 +36,14 @@ function qualityIssuesForItem(release: Release, item: ReleaseItem): ReleaseQuali
       releaseVersion: release.version,
       itemId: item.id,
       reason: "high-risk item has no source link"
+    });
+  }
+
+  if (!strongConclusionAllowed(item) && highRisk) {
+    issues.push({
+      releaseVersion: release.version,
+      itemId: item.id,
+      reason: "high-risk community or unsourced inferred item cannot drive a strong conclusion"
     });
   }
 

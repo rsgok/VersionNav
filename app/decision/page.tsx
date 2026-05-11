@@ -1,5 +1,6 @@
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import Link from "next/link";
+import FeedbackForm from "@/components/FeedbackForm";
 import RecommendationResult from "@/components/RecommendationResult";
 import { dictionary, normalizeLocale } from "@/lib/i18n";
 import { normalizeProductId } from "@/lib/products";
@@ -90,6 +91,16 @@ export default async function DecisionPage({ searchParams }: DecisionPageProps) 
             {messages.showFullCompare}
             <ArrowRight size={16} />
           </Link>
+          <div>
+            <p className="kicker">{messages.feedback}</p>
+            <FeedbackForm
+              messages={messages}
+              productId={productId}
+              fromVersion={currentVersion}
+              targetVersion={result.recommendedVersion}
+              recommendation={result}
+            />
+          </div>
         </aside>
       </section>
     </main>
